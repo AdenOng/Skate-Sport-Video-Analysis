@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkateAnalyzer - AI Video Coach</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f0f0f;
+            --bg-secondary: #1e1e1e; /* Sidebar/Card color */
+            --text-main: #ffffff;
+            --text-gray: #aaaaaa;
+            --accent: #3ea6ff;
+            --btn-bg: #263850;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            overflow-x: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Navbar */
+        nav {
+            height: 60px;
+            background: rgba(15,15,15, 0.98);
+            padding: 0 2rem;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .logo { font-size: 1.4rem; font-weight: bold; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .logo span { color: var(--accent); }
+        
+        .upload-btn {
+            background: var(--btn-bg);
+            color: var(--accent);
+            border: 1px solid var(--btn-bg);
+            padding: 8px 16px;
+            border-radius: 18px;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+        }
+        .upload-btn:hover { background: #2c425e; border-color: var(--accent); }
+
+        /* Layout */
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 0;
+            flex-grow: 1;
+            overflow: hidden; /* Prevent body scroll */
+        }
+
+        @media (max-width: 1000px) {
+            .container { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; overflow-y: auto; }
+        }
+
+        /* Main Video Stage */
+        .main-stage {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            background: #0f0f0f;
+        }
+
+        .video-container {
+            width: 100%;
+            max-height: 75vh;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        video { width: 100%; height: 100%; object-fit: contain; }
+
+        .video-info { margin-top: 16px; padding-bottom: 20px; border-bottom: 1px solid #333; }
+        .video-title { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
+        .video-stats { color: var(--text-gray); font-size: 0.9rem; display: flex; gap: 16px; align-items: center; }
+        
+        .action-row { margin-top: 15px; display: flex; gap: 10px; }
+        .btn-action {
+            padding: 8px 16px; border-radius: 18px; background: #222; color: #fff;
+            text-decoration: none; font-size: 0.9rem; font-weight: 500;
+            display: inline-flex; align-items: center; gap: 6px; cursor: pointer; transition: 0.2s;
+        }
+        .btn-action:hover { background: #333; }
+
+        /* Sidebar (History) */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-left: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+        .sidebar-header {
+            padding: 16px 20px;
+            font-size: 1.1rem; font-weight: 500;
+            border-bottom: 1px solid #333;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .clear-btn { font-size: 0.8rem; color: #ff4d4d; cursor: pointer; }
+
+        .video-list {
+            padding: 10px;
+            overflow-y: auto;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .video-card {
+            display: flex;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+        .video-card:hover { background: #333; }
+        .video-card.active { background: #333; border: 1px solid var(--accent); }
+
+        .card-thumb {
+            width: 160px;
+            height: 90px;
+            background: #000;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .card-thumb video { object-fit: cover; opacity: 0.8; width: 100%; height: 100%; }
+        
+        .card-info { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; padding-top: 4px; }
+        .card-title { font-size: 0.9rem; font-weight: 500; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }
+        .card-meta { font-size: 0.8rem; color: var(--text-gray); }
+
+        /* Hidden Input */
+        #fileInput { display: none; }
+
+        /* Overlay Loader */
+        .overlay {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+        .progress-text { font-size: 1.2rem; font-weight: 500; }
+        .progress-sub { color: #888; font-size: 0.9rem; margin-top: 8px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo" onclick="location.reload()">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="white" style="margin-right:8px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+            Skate<span>Analyzer</span>
+        </div>
+        <div class="upload-btn" onclick="document.getElementById('fileInput').click()">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.83V19h2v-4.17l1.59 1.59L16 15.01 12.01 11 8 15.01z"/></svg>
+            Upload Video
+        </div>
+        <input type="file" id="fileInput" accept="video/*">
+    </nav>
+
+    <div class="container">
+        <!-- Main Stage -->
+        <div class="main-stage">
+            <div class="video-container">
+                <div class="overlay" id="loader">
+                    <div class="spinner"></div>
+                    <div class="progress-text">Analyzing Video...</div>
+                    <div class="progress-sub" id="statusText">This may take a moment based on GPU speed.</div>
+                </div>
+                <!-- Main Player -->
+                <video id="mainPlayer" controls playsinline></video>
+            </div>
+            
+            <div class="video-info">
+                <h1 class="video-title" id="mainTitle">Welcome to SkateAnalyzer</h1>
+                <div class="video-stats">
+                    <span id="mainDate">Select a video from the sidebar or upload a new one.</span>
+                </div>
+                <div class="action-row">
+                    <a id="downloadBtn" href="#" class="btn-action" style="display:none;" download>
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        Download MP4
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                Recent Analysis
+                <span class="clear-btn" onclick="clearHistory()">Clear All</span>
+            </div>
+            <div id="videoList" class="video-list">
+                <!-- Javascript will insert cards here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const loader = document.getElementById('loader');
+        const statusText = document.getElementById('statusText');
+        const mainPlayer = document.getElementById('mainPlayer');
+        const mainTitle = document.getElementById('mainTitle');
+        const mainDate = document.getElementById('mainDate');
+        const videoList = document.getElementById('videoList');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // State
+        let sessionVideos = [];
+
+        // --- 1. LOAD HISTORY ON STARTUP ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const saved = localStorage.getItem('skateHistory');
+            if (saved) {
+                try {
+                    sessionVideos = JSON.parse(saved);
+                    renderList();
+                    // Auto-load the most recent video if available
+                    if(sessionVideos.length > 0) playVideo(sessionVideos[0]);
+                } catch(e) {
+                    console.error("Failed to load history", e);
+                }
+            }
+        });
+
+        // --- 2. UPLOAD LOGIC ---
+        fileInput.addEventListener('change', async (e) => {
+            if(e.target.files.length === 0) return;
+            
+            const file = e.target.files[0];
+            
+            // UI Updates
+            loader.style.display = "flex";
+            statusText.innerText = `Uploading ${file.name}... Please wait.`;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                // Send to Backend
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if(!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || "Analysis failed");
+                }
+                
+                const data = await response.json();
+
+                // Create Video Object
+                const videoData = {
+                    title: data.original_name,
+                    url: data.video_url,
+                    date: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                    id: data.processed_at
+                };
+                
+                // Add to List & Save
+                sessionVideos.unshift(videoData); 
+                saveHistory();
+
+                // Refresh UI
+                renderList();
+                playVideo(videoData);
+
+            } catch (err) {
+                alert("Error: " + err.message);
+            } finally {
+                loader.style.display = "none";
+                fileInput.value = ""; // Reset input so same file can be selected again
+            }
+        });
+
+        // --- 3. HELPER FUNCTIONS ---
+
+        function saveHistory() {
+            // Limit history to last 20 items to save storage
+            if(sessionVideos.length > 20) sessionVideos = sessionVideos.slice(0, 20);
+            localStorage.setItem('skateHistory', JSON.stringify(sessionVideos));
+        }
+
+        function clearHistory() {
+            if(confirm("Clear all video history? (Files on server are not deleted)")) {
+                sessionVideos = [];
+                localStorage.removeItem('skateHistory');
+                renderList();
+                mainTitle.innerText = "History Cleared";
+                mainPlayer.src = "";
+                downloadBtn.style.display = "none";
+            }
+        }
+
+        function renderList() {
+            videoList.innerHTML = "";
+            if(sessionVideos.length === 0) {
+                videoList.innerHTML = "<div style='padding:20px; color:#666; text-align:center;'>No recent videos</div>";
+                return;
+            }
+
+            sessionVideos.forEach(vid => {
+                const div = document.createElement('div');
+                div.className = "video-card";
+                div.setAttribute('data-id', vid.id);
+                div.onclick = () => playVideo(vid);
+                
+                div.innerHTML = `
+                    <div class="card-thumb">
+                        <video src="${vid.url}#t=1.0" preload="metadata" muted></video>
+                    </div>
+                    <div class="card-info">
+                        <div class="card-title">${vid.title}</div>
+                        <div class="card-meta">Processed: ${vid.date}</div>
+                    </div>
+                `;
+                videoList.appendChild(div);
+            });
+        }
+
+        function playVideo(vid) {
+            // Setup Player
+            mainPlayer.src = vid.url;
+            mainPlayer.play().catch(e => console.log("Auto-play prevented")); // Handle browser blocking
+            
+            // Setup Info
+            mainTitle.innerText = vid.title;
+            mainDate.innerText = "Analyzed at " + vid.date;
+            
+            // Setup Download
+            downloadBtn.style.display = "inline-flex";
+            downloadBtn.href = vid.url;
+            downloadBtn.download = "analyzed_" + vid.title;
+
+            // Highlight active card
+            document.querySelectorAll('.video-card').forEach(c => c.classList.remove('active'));
+            const activeCard = document.querySelector(`.video-card[data-id="${vid.id}"]`);
+            if(activeCard) activeCard.classList.add('active');
+        }
+    </script>
+</body>
+</html>

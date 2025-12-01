@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: skate_backend
+    restart: always
+    # --- NEW: ENABLE GPU SUPPORT ---
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # -------------------------------
+    volumes:
+      - ./Models:/app/models
+    expose:
+      - "8000"
+
+  nginx:
+    image: nginx:latest
+    container_name: skate_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./frontend:/usr/share/nginx/html
+    depends_on:
+      - backend
