@@ -312,40 +312,73 @@ class SkateContactAnalyzer:
                 'wheeling': {'left': calc_ang('left'), 'right': calc_ang('right')}}
 
 class BoxTracker:
-    def __init__(self, iou_thr=0.2):
+    def __init__(self, iou_thr=0.2, dist_thr=400): # dist_thr is max pixels moved
         self.iou_thr = iou_thr
-        self.tracks = {} 
+        self.dist_thr = dist_thr
+        self.tracks = {}  
         self.next_id = 0
 
-    def update(self, boxes, frame_shape):
-        assigned = [-1]*len(boxes)
-        used = set()
+    def _centroid(self, box):
+        return ((box[0]+box[2])/2, (box[1]+box[3])/2)
+
+    def _dist(self, c1, c2):
+        return math.sqrt((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2)
+
+    def update(self, boxes: List[np.ndarray], frame_shape):
+        assigned_ids = [-1] * len(boxes)
+        used_tracks = set()
         
+        # 1. Try IoU Matching (Standard)
         for i, box in enumerate(boxes):
-            best_id, best_iou = -1, 0.0
-            for tid, t in self.tracks.items():
-                if tid in used: continue
-                iou = iou_xyxy(t['box'], box)
-                if iou > best_iou: best_iou, best_id = iou, tid
-            if best_iou >= self.iou_thr:
-                assigned[i] = best_id
-                used.add(best_id)
+            if assigned_ids[i] != -1: continue
+            best_id, best_score = -1, -1
+            
+            for tid, track in self.tracks.items():
+                if tid in used_tracks: continue
+                score = iou_xyxy(track['box'], box)
+                if score > best_score: best_score, best_id = score, tid
+            
+            if best_score >= self.iou_thr:
+                assigned_ids[i] = best_id
+                used_tracks.add(best_id)
                 self.tracks[best_id].update({'box': box, 'age': 0})
-        
+
+        # 2. Try Distance Matching (For fast movement/skips)
+        # If IoU failed, see if the center of the box is close to an existing track
+        for i, box in enumerate(boxes):
+            if assigned_ids[i] != -1: continue
+            best_id, best_dist = -1, float('inf')
+            c_curr = self._centroid(box)
+
+            for tid, track in self.tracks.items():
+                if tid in used_tracks: continue
+                c_prev = self._centroid(track['box'])
+                dist = self._dist(c_curr, c_prev)
+                if dist < best_dist: best_dist, best_id = dist, tid
+            
+            if best_dist < self.dist_thr:
+                assigned_ids[i] = best_id
+                used_tracks.add(best_id)
+                self.tracks[best_id].update({'box': box, 'age': 0})
+
+        # 3. Create New IDs for unmatched
         for i in range(len(boxes)):
-            if assigned[i] == -1:
+            if assigned_ids[i] == -1:
                 self.tracks[self.next_id] = {'box': boxes[i], 'age': 0}
-                assigned[i] = self.next_id
+                assigned_ids[i] = self.next_id
                 self.next_id += 1
         
+        # 4. Cleanup stale tracks
         for tid in list(self.tracks.keys()):
-            if tid not in used:
+            if tid not in used_tracks:
                 self.tracks[tid]['age'] += 1
                 if self.tracks[tid]['age'] > 30: del self.tracks[tid]
-        return assigned
+                    
+        return assigned_ids
 
     def _score_main(self, b, W, H):
         cx, cy = (b[0]+b[2])/2, (b[1]+b[3])/2
+        # Prefer boxes closer to center and larger
         return (1.0 - (abs((cx-W/2)/W) + abs((cy-H/2)/H))) + 0.00001 * ((b[2]-b[0])*(b[3]-b[1]))
 
 def posture_metrics(kps, scores, conf_thr=0.3):
@@ -380,11 +413,16 @@ class SkatingVideoAnalyzer:
         self.pose = rtm_model
         self.nskip = max(1, int(process_every_n))
         self.conf_thr = float(conf_thr)
-        self.tracker = BoxTracker(iou_thr=0.2)
+        # Use the Robust Tracker (High speed tolerance)
+        self.tracker = BoxTracker(iou_thr=0.2, dist_thr=400)
         self.max_subjects = max_subjects
         self.logger = logger
         self.subject_states = {}
         self.cached_subjects = []
+        # Tracking State
+        self.last_known_box = None 
+        self.locked_id = None
+        self.startup_frames = 0
 
     def _get_or_create_state(self, tid):
         if tid not in self.subject_states:
@@ -438,28 +476,118 @@ class SkatingVideoAnalyzer:
 
     def process(self, frame: np.ndarray, fidx: int, ts: float) -> np.ndarray:
         H, W = frame.shape[:2]
+        cx_img = W / 2.0
+        
         do_proc = (fidx % self.nskip == 0)
 
         if do_proc:
             self.cached_subjects = []
-            raw_boxes, _ = self._yolo_detect(frame)
+            raw_boxes, raw_scores = self._yolo_detect(frame)
+            
             if raw_boxes:
-                clipped = [np.clip(b, [0,0,0,0], [W-1,H-1,W-1,H-1]) for b in raw_boxes]
-                tids = self.tracker.update(clipped, frame.shape)
-                cands = sorted(zip(clipped, tids), key=lambda x: self.tracker._score_main(x[0], W, H), reverse=True)[:self.max_subjects]
+                # Clip boxes to screen limits
+                clipped_boxes = [np.clip(b, [0,0,0,0], [W-1,H-1,W-1,H-1]) for b in raw_boxes]
                 
-                if cands:
-                    sel_boxes = [c[0] for c in cands]
-                    sel_ids = [c[1] for c in cands]
-                    kps_list, scr_list = self._rtm_infer(frame, sel_boxes)
-                    
-                    for i, tid in enumerate(sel_ids):
-                        self.cached_subjects.append({'id': tid, 'bbox': sel_boxes[i], 'kps': kps_list[i], 'scores': scr_list[i]})
+                # --- FILTER 1: IGNORE TINY OBJECTS (JUDGES) ---
+                # Logic: If the box height is less than 15% of screen height, it's background.
+                min_height = H * 0.15 
+                
+                valid_boxes = []
+                for b in clipped_boxes:
+                    h = b[3] - b[1]
+                    if h > min_height:
+                        valid_boxes.append(b)
+                
+                # If we filtered everyone out (skater is far away), relax the filter
+                if not valid_boxes and clipped_boxes:
+                    valid_boxes = clipped_boxes
 
-            active_tids = set(self.tracker.tracks.keys())
+                # Update tracker only with valid boxes
+                box_ids = self.tracker.update(valid_boxes, frame.shape)
+                candidates = list(zip(valid_boxes, box_ids))
+                
+                selected_candidate = None
+
+                # -----------------------------------------------------------
+                # PHASE 1: TRY TO MAINTAIN LOCK (Stickiness)
+                # -----------------------------------------------------------
+                if self.locked_id is not None:
+                    for box, tid in candidates:
+                        if tid == self.locked_id:
+                            selected_candidate = (box, tid)
+                            break
+                
+                # Handoff Logic (If lock lost, check near last known position)
+                if selected_candidate is None and self.last_known_box is not None:
+                    best_overlap_dist = float('inf')
+                    for box, tid in candidates:
+                        c_old = ((self.last_known_box[0]+self.last_known_box[2])/2, (self.last_known_box[1]+self.last_known_box[3])/2)
+                        c_new = ((box[0]+box[2])/2, (box[1]+box[3])/2)
+                        dist = math.sqrt((c_old[0]-c_new[0])**2 + (c_old[1]-c_new[1])**2)
+                        
+                        if dist < 300: 
+                            if dist < best_overlap_dist:
+                                best_overlap_dist = dist
+                                selected_candidate = (box, tid)
+                                self.locked_id = tid 
+
+                # -----------------------------------------------------------
+                # PHASE 2: INITIAL SELECTION (Smart Weighting)
+                # -----------------------------------------------------------
+                if selected_candidate is None and candidates:
+                    def get_weighted_score(c):
+                        box = c[0]
+                        x1, y1, x2, y2 = box
+                        
+                        # 1. Area (Size matters)
+                        area = (x2 - x1) * (y2 - y1)
+                        
+                        # 2. EDGE PENALTY MATH
+                        # Calculate center of the box
+                        bx = (x1 + x2) / 2.0
+                        
+                        # Normalize distance from center (0.0 = center, 1.0 = edge)
+                        # We divide by (W/2) to get a 0-to-1 ratio
+                        dist_norm = abs(bx - cx_img) / (W / 2.0)
+                        
+                        # --- THE PENALTY FORMULA ---
+                        # We use Power of 3 (Cubic) to punish edges EXTREMELY hard.
+                        # Center (0.0) -> 1.0 - 0.0 = 1.0 (Keep 100% of score)
+                        # Edge   (0.9) -> 1.0 - 0.73 = 0.27 (Lose 73% of score!)
+                        centrality = 1.0 - (dist_norm ** 3)
+                        
+                        # Clamp to ensure we don't multiply by negative numbers
+                        centrality = max(0.001, centrality)
+                        
+                        return area * centrality
+
+                    # Sort by this new Weighted Score
+                    candidates.sort(key=get_weighted_score, reverse=True)
+                    
+                    # The winner is the largest object that is reasonably centered
+                    selected_candidate = candidates[0]
+                    self.locked_id = selected_candidate[1]
+
+                # -----------------------------------------------------------
+                # EXECUTE
+                # -----------------------------------------------------------
+                if selected_candidate:
+                    box, tid = selected_candidate
+                    self.last_known_box = box 
+                    
+                    kps_list, scr_list = self._rtm_infer(frame, [box])
+                    if kps_list:
+                        self.cached_subjects.append({
+                            'id': tid, 'bbox': box, 'kps': kps_list[0], 'scores': scr_list[0]
+                        })
+                        self.startup_frames += 1
+
+            # Cleanup
+            active_tids = set(box_ids) if raw_boxes else set()
             for tid in list(self.subject_states.keys()):
                 if tid not in active_tids: del self.subject_states[tid]
 
+        # --- DRAWING LOGIC ---
         for subj_data in self.cached_subjects:
             tid, bbox, raw_kps, raw_scores = subj_data['id'], subj_data['bbox'], subj_data['kps'], subj_data['scores']
             if raw_kps is None: continue
@@ -474,23 +602,14 @@ class SkatingVideoAnalyzer:
                 rk = knee_angle(kps, scores, 'right', self.conf_thr)
                 if lk: state['L_knee'].append(lk)
                 if rk: state['R_knee'].append(rk)
-                
                 state['cache'] = {'kps': kps, 'scores': scores, 'contact': contact, 'torso': torso, 'lk': lk, 'rk': rk}
-                
-                if self.logger:
-                    self.logger.write_row({
-                        'frame': fidx, 'time_s': round(ts,4), 'subject': tid,
-                        'wheelL_ang': contact['wheeling']['left'].get('angle'), 
-                        'wheelR_ang': contact['wheeling']['right'].get('angle'),
-                        'torso_deg': torso, 'kneeL_deg': lk, 'kneeR_deg': rk
-                    })
-
+            
             cache = state.get('cache', {})
             kps = cache.get('kps', raw_kps)
             scores = cache.get('scores', raw_scores)
             contact = cache.get('contact', {'left':{'state':'Unknown'}, 'right':{'state':'Unknown'}, 'wheeling':{'left':{},'right':{}}})
-            
             state_str = self._get_global_state(contact['left']['state'], contact['right']['state'])
+            
             frame = self._draw_subject(frame, bbox, kps, scores, contact, cache.get('torso'), cache.get('lk'), cache.get('rk'), state_str, state)
 
         return frame
@@ -500,38 +619,53 @@ class SkatingVideoAnalyzer:
         # Draw BBox
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
         
-        # Draw Skeleton (Using custom function now)
+        # Draw Skeleton
         draw_skeleton(frame, kps, scores, kpt_thr=self.conf_thr)
         
-        posture = "Upright" if (torso or 0) <= 10 else ("Slight Lean" if (torso or 0) <= 30 else "Aggressive")
+        # Posture Logic
+        torso_val = int(torso) if torso is not None else 0
+        posture = "Upright" if torso_val <= 10 else ("Slight Lean" if torso_val <= 30 else "Aggressive")
+        
         def wang(s): return f"{out['wheeling'][s].get('angle') or '-'}°"
 
         lines = [
             f"STATE: {state_str}",
-            f"Posture: {posture}",
+            f"Posture: {posture} ({torso_val}°)", # <--- ADDED ANGLE HERE
             f"L-Knee: {int(lk)}°" if lk else "L-Knee: -",
             f"R-Knee: {int(rk)}°" if rk else "R-Knee: -",
             f"L-Ankle: {wang('left')}", 
             f"R-Ankle: {wang('right')}"
         ]
 
-        # Fixed top-left position with background
+        # Fixed Dashboard Position (Top Left of Screen)
         start_x, start_y = 20, 40
         line_height = 25
         
+        # Draw Background Panel
         overlay = frame.copy()
-        bg_h = len(lines) * line_height + 10
+        bg_h = len(lines) * line_height + 40 # Added extra height for graphs
         cv2.rectangle(overlay, (start_x - 5, start_y - 25), (start_x + 250, start_y + bg_h), (0, 0, 0), -1)
         alpha = 0.6
         frame = cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0)
 
+        # Draw Text
+        current_y = start_y
         for i, line in enumerate(lines):
-            cv2.putText(frame, line, (start_x, start_y + i*line_height), 
+            cv2.putText(frame, line, (start_x, current_y), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+            current_y += line_height
+
+        # --- MOVED SPARKLINES TO DASHBOARD ---
+        # Draw them below the text lines
+        graph_y = current_y + 5
         
-        # Sparklines near box
-        if state.get('L_knee'): self._sparkline(frame, list(state['L_knee']), (x1, y2-34, 60, 26), 'Lk')
-        if state.get('R_knee'): self._sparkline(frame, list(state['R_knee']), (x1+65, y2-34, 60, 26), 'Rk')
+        # Left Knee Graph
+        if state.get('L_knee'): 
+            self._sparkline(frame, list(state['L_knee']), (start_x, graph_y, 100, 30), 'Lk')
+        
+        # Right Knee Graph (shifted right)
+        if state.get('R_knee'): 
+            self._sparkline(frame, list(state['R_knee']), (start_x + 110, graph_y, 100, 30), 'Rk')
         
         return frame
 
