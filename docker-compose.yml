@@ -5,17 +5,15 @@ services:
     build: ./backend
     container_name: skate_backend
     restart: always
-    # --- NEW: ENABLE GPU SUPPORT ---
+    # GPU support requires NVIDIA Container Toolkit and Docker Compose v2.3+
+    # If GPU is not detected, try: gpus: all (requires Compose v2.3+ spec)
     deploy:
       resources:
         reservations:
           devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    # -------------------------------
+            - capabilities: [gpu]
     volumes:
-      - ./Models:/app/models
+      - ./Models:/app/models:ro
     expose:
       - "8000"
 

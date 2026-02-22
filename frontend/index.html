@@ -8,11 +8,14 @@
     <style>
         :root {
             --bg-dark: #0f0f0f;
-            --bg-secondary: #1e1e1e; /* Sidebar/Card color */
+            --bg-secondary: #1e1e1e;
             --text-main: #ffffff;
             --text-gray: #aaaaaa;
             --accent: #3ea6ff;
+            --accent-hover: #5fb8ff;
             --btn-bg: #263850;
+            --danger: #ff4d4d;
+            --success: #4caf50;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,7 +30,6 @@
             flex-direction: column;
         }
 
-        /* Navbar */
         nav {
             height: 60px;
             background: rgba(15,15,15, 0.98);
@@ -42,7 +44,9 @@
         .logo { font-size: 1.4rem; font-weight: bold; display: flex; align-items: center; gap: 10px; cursor: pointer; }
         .logo span { color: var(--accent); }
         
-        .upload-btn {
+        .nav-actions { display: flex; align-items: center; gap: 12px; }
+        
+        .upload-btn, .btn {
             background: var(--btn-bg);
             color: var(--accent);
             border: 1px solid var(--btn-bg);
@@ -54,23 +58,26 @@
             align-items: center;
             gap: 8px;
             transition: 0.2s;
+            font-size: 14px;
         }
-        .upload-btn:hover { background: #2c425e; border-color: var(--accent); }
+        .upload-btn:hover, .btn:hover { background: #2c425e; border-color: var(--accent); }
+        .btn-primary { background: var(--accent); color: #000; border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+        .btn-danger:hover { background: rgba(255,77,77,0.1); }
 
-        /* Layout */
         .container {
             display: grid;
             grid-template-columns: 1fr 400px;
             gap: 0;
             flex-grow: 1;
-            overflow: hidden; /* Prevent body scroll */
+            overflow: hidden;
         }
 
         @media (max-width: 1000px) {
             .container { grid-template-columns: 1fr; grid-template-rows: 60vh 1fr; overflow-y: auto; }
         }
 
-        /* Main Video Stage */
         .main-stage {
             padding: 24px;
             display: flex;
@@ -107,7 +114,6 @@
         }
         .btn-action:hover { background: #333; }
 
-        /* Sidebar (History) */
         .sidebar {
             background: var(--bg-secondary);
             border-left: 1px solid #333;
@@ -162,10 +168,8 @@
         .card-title { font-size: 0.9rem; font-weight: 500; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }
         .card-meta { font-size: 0.8rem; color: var(--text-gray); }
 
-        /* Hidden Input */
         #fileInput { display: none; }
 
-        /* Overlay Loader */
         .overlay {
             position: absolute; top:0; left:0; width:100%; height:100%;
             background: rgba(0,0,0,0.85);
@@ -188,6 +192,120 @@
         .progress-sub { color: #888; font-size: 0.9rem; margin-top: 8px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
+        /* Person Selection Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 90vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .modal-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        .modal-subtitle {
+            color: var(--text-gray);
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        .selection-canvas-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            max-width: 100%;
+        }
+        #selectionCanvas {
+            max-width: 100%;
+            max-height: 60vh;
+            cursor: crosshair;
+        }
+        .selection-box {
+            position: absolute;
+            border: 3px solid var(--accent);
+            background: rgba(62, 166, 255, 0.2);
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .selection-box:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 20px rgba(62, 166, 255, 0.5);
+        }
+        .selection-box.selected {
+            border-color: var(--success);
+            background: rgba(76, 175, 80, 0.3);
+        }
+        .selection-number {
+            position: absolute;
+            top: -12px;
+            left: -12px;
+            background: var(--accent);
+            color: #000;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .person-count {
+            text-align: center;
+            color: var(--text-gray);
+            font-size: 0.85rem;
+        }
+        .notification {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 2000;
+            animation: slideDown 0.3s ease-out;
+        }
+        .notification.warning {
+            background: #ff9800;
+            color: #000;
+        }
+        .notification.error {
+            background: var(--danger);
+            color: #fff;
+        }
+        .notification.success {
+            background: var(--success);
+            color: #fff;
+        }
+        @keyframes slideDown {
+            from { top: 20px; opacity: 0; }
+            to { top: 70px; opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -197,15 +315,16 @@
             <svg viewBox="0 0 24 24" width="28" height="28" fill="white" style="margin-right:8px"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
             Skate<span>Analyzer</span>
         </div>
-        <div class="upload-btn" onclick="document.getElementById('fileInput').click()">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.83V19h2v-4.17l1.59 1.59L16 15.01 12.01 11 8 15.01z"/></svg>
-            Upload Video
+        <div class="nav-actions">
+            <div class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 15.01l1.41 1.41L11 14.83V19h2v-4.17l1.59 1.59L16 15.01 12.01 11 8 15.01z"/></svg>
+                Upload Video
+            </div>
         </div>
         <input type="file" id="fileInput" accept="video/*">
     </nav>
 
     <div class="container">
-        <!-- Main Stage -->
         <div class="main-stage">
             <div class="video-container">
                 <div class="overlay" id="loader">
@@ -213,7 +332,6 @@
                     <div class="progress-text">Analyzing Video...</div>
                     <div class="progress-sub" id="statusText">This may take a moment based on GPU speed.</div>
                 </div>
-                <!-- Main Player -->
                 <video id="mainPlayer" controls playsinline></video>
             </div>
             
@@ -231,14 +349,29 @@
             </div>
         </div>
 
-        <!-- Sidebar -->
         <div class="sidebar">
             <div class="sidebar-header">
                 Recent Analysis
                 <span class="clear-btn" onclick="clearHistory()">Clear All</span>
             </div>
             <div id="videoList" class="video-list">
-                <!-- Javascript will insert cards here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Person Selection Modal -->
+    <div class="modal-overlay" id="personModal">
+        <div class="modal-content">
+            <div class="modal-title">Select Skater to Track</div>
+            <div class="modal-subtitle">Click on the person you want to analyze. If multiple people are detected, selecting the correct one helps avoid tracking errors.</div>
+            <div class="selection-canvas-container" id="canvasContainer">
+                <canvas id="selectionCanvas"></canvas>
+            </div>
+            <div class="person-count" id="personCount">Detecting persons...</div>
+            <div class="modal-actions">
+                <button class="btn btn-danger" onclick="cancelSelection()">Cancel</button>
+                <button class="btn btn-primary" id="analyzeAllBtn" onclick="analyzeAllPersons()">Analyze Without Selection</button>
+                <button class="btn btn-primary" id="analyzeSelectedBtn" onclick="analyzeSelectedPerson()" style="display:none;">Analyze Selected Person</button>
             </div>
         </div>
     </div>
@@ -252,18 +385,40 @@
         const mainDate = document.getElementById('mainDate');
         const videoList = document.getElementById('videoList');
         const downloadBtn = document.getElementById('downloadBtn');
+        const personModal = document.getElementById('personModal');
+        const selectionCanvas = document.getElementById('selectionCanvas');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const personCount = document.getElementById('personCount');
+        const analyzeSelectedBtn = document.getElementById('analyzeSelectedBtn');
+        const analyzeAllBtn = document.getElementById('analyzeAllBtn');
 
-        // State
         let sessionVideos = [];
+        let pendingFile = null;
+        let detectedPersons = [];
+        let selectedPersonIndex = null;
+        let currentFrameData = null;
 
-        // --- 1. LOAD HISTORY ON STARTUP ---
+        function showNotification(message, type = 'warning') {
+            const existing = document.querySelector('.notification');
+            if (existing) existing.remove();
+            
+            const notif = document.createElement('div');
+            notif.className = `notification ${type}`;
+            notif.textContent = message;
+            document.body.appendChild(notif);
+            
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                setTimeout(() => notif.remove(), 300);
+            }, 4000);
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const saved = localStorage.getItem('skateHistory');
             if (saved) {
                 try {
                     sessionVideos = JSON.parse(saved);
                     renderList();
-                    // Auto-load the most recent video if available
                     if(sessionVideos.length > 0) playVideo(sessionVideos[0]);
                 } catch(e) {
                     console.error("Failed to load history", e);
@@ -271,34 +426,211 @@
             }
         });
 
-        // --- 2. UPLOAD LOGIC ---
         fileInput.addEventListener('change', async (e) => {
             if(e.target.files.length === 0) return;
             
             const file = e.target.files[0];
+            pendingFile = file;
+            selectedPersonIndex = null;
             
-            // UI Updates
             loader.style.display = "flex";
-            statusText.innerText = `Uploading ${file.name}... Please wait.`;
+            statusText.innerText = `Extracting first frame from ${file.name}...`;
+
+            try {
+                const frameDataUrl = await extractFirstFrame(file);
+                currentFrameData = frameDataUrl;
+                
+                statusText.innerText = "Detecting persons in first frame...";
+                
+                const formData = new FormData();
+                formData.append("file", file);
+
+                const response = await fetch('/api/detect', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if(!response.ok) {
+                    throw new Error(`Detection failed: ${response.status}`);
+                }
+
+                const result = await response.json();
+                detectedPersons = result.persons || [];
+                
+                loader.style.display = "none";
+                showPersonSelectionModal(frameDataUrl, result.width, result.height, detectedPersons);
+
+            } catch (err) {
+                loader.style.display = "none";
+                console.error("Detection error:", err);
+                showNotification("Person detection failed. Proceeding with automatic tracking.", "warning");
+                startAnalysis(null);
+            } finally {
+                fileInput.value = "";
+            }
+        });
+
+        function extractFirstFrame(file) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.preload = 'metadata';
+                video.muted = true;
+                video.playsInline = true;
+                
+                video.onloadeddata = () => {
+                    video.currentTime = 0.1;
+                };
+                
+                video.onseeked = () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(video, 0, 0);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                        URL.revokeObjectURL(video.src);
+                        resolve(dataUrl);
+                    } catch (e) {
+                        reject(e);
+                    }
+                };
+                
+                video.onerror = () => {
+                    URL.revokeObjectURL(video.src);
+                    reject(new Error("Failed to load video"));
+                };
+                
+                video.src = URL.createObjectURL(file);
+                video.load();
+            });
+        }
+
+        function showPersonSelectionModal(imageDataUrl, imgWidth, imgHeight, persons) {
+            const img = new Image();
+            img.onload = () => {
+                const maxWidth = Math.min(900, window.innerWidth * 0.85);
+                const maxHeight = window.innerHeight * 0.55;
+                const scale = Math.min(maxWidth / imgWidth, maxHeight / imgHeight, 1);
+                
+                const displayWidth = Math.round(imgWidth * scale);
+                const displayHeight = Math.round(imgHeight * scale);
+                
+                selectionCanvas.width = displayWidth;
+                selectionCanvas.height = displayHeight;
+                
+                const ctx = selectionCanvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+                
+                const existingBoxes = canvasContainer.querySelectorAll('.selection-box');
+                existingBoxes.forEach(b => b.remove());
+                
+                if (persons.length === 0) {
+                    personCount.textContent = "No persons detected. Analysis will track automatically.";
+                    analyzeSelectedBtn.style.display = 'none';
+                    analyzeAllBtn.textContent = 'Start Analysis';
+                } else {
+                    personCount.textContent = `${persons.length} person${persons.length > 1 ? 's' : ''} detected. Click a box to select, or start analysis without selection.`;
+                    
+                    persons.forEach((person, idx) => {
+                        const box = document.createElement('div');
+                        box.className = 'selection-box';
+                        box.dataset.index = idx;
+                        
+                        const [x1, y1, x2, y2] = person.bbox;
+                        box.style.left = `${x1 * scale}px`;
+                        box.style.top = `${y1 * scale}px`;
+                        box.style.width = `${(x2 - x1) * scale}px`;
+                        box.style.height = `${(y2 - y1) * scale}px`;
+                        
+                        const number = document.createElement('div');
+                        number.className = 'selection-number';
+                        number.textContent = idx + 1;
+                        box.appendChild(number);
+                        
+                        box.onclick = () => selectPerson(idx, box);
+                        
+                        canvasContainer.appendChild(box);
+                    });
+                    
+                    analyzeSelectedBtn.style.display = 'none';
+                    analyzeAllBtn.textContent = 'Skip Selection';
+                }
+                
+                personModal.style.display = 'flex';
+            };
+            img.src = imageDataUrl;
+        }
+
+        function selectPerson(index, boxElement) {
+            const allBoxes = canvasContainer.querySelectorAll('.selection-box');
+            allBoxes.forEach(b => b.classList.remove('selected'));
+            
+            boxElement.classList.add('selected');
+            selectedPersonIndex = index;
+            
+            analyzeSelectedBtn.style.display = 'inline-flex';
+            analyzeAllBtn.textContent = 'Skip Selection';
+        }
+
+        function cancelSelection() {
+            personModal.style.display = 'none';
+            pendingFile = null;
+            detectedPersons = [];
+            selectedPersonIndex = null;
+        }
+
+        function analyzeAllPersons() {
+            personModal.style.display = 'none';
+            startAnalysis(null);
+        }
+
+        function analyzeSelectedPerson() {
+            if (selectedPersonIndex === null || !detectedPersons[selectedPersonIndex]) {
+                alert('Please select a person first');
+                return;
+            }
+            
+            const bbox = detectedPersons[selectedPersonIndex].bbox;
+            personModal.style.display = 'none';
+            startAnalysis(bbox);
+        }
+
+        async function startAnalysis(targetBbox) {
+            if (!pendingFile) return;
+            
+            const file = pendingFile;
+            pendingFile = null;
+            
+            loader.style.display = "flex";
+            statusText.innerText = `Uploading ${file.name}...`;
 
             const formData = new FormData();
             formData.append("file", file);
+            
+            if (targetBbox) {
+                formData.append("target_bbox", targetBbox.join(','));
+            }
 
             try {
-                // Send to Backend
                 const response = await fetch('/api/analyze', {
                     method: 'POST',
                     body: formData
                 });
 
                 if(!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || "Analysis failed");
+                    let errorMessage = "Analysis failed";
+                    try {
+                        const err = await response.json();
+                        errorMessage = err.detail || err.error || errorMessage;
+                    } catch {
+                        errorMessage = `Server error (${response.status}): ${response.statusText}`;
+                    }
+                    throw new Error(errorMessage);
                 }
-                
+
                 const data = await response.json();
 
-                // Create Video Object
                 const videoData = {
                     title: data.original_name,
                     url: data.video_url,
@@ -306,11 +638,8 @@
                     id: data.processed_at
                 };
                 
-                // Add to List & Save
                 sessionVideos.unshift(videoData); 
                 saveHistory();
-
-                // Refresh UI
                 renderList();
                 playVideo(videoData);
 
@@ -318,14 +647,10 @@
                 alert("Error: " + err.message);
             } finally {
                 loader.style.display = "none";
-                fileInput.value = ""; // Reset input so same file can be selected again
             }
-        });
-
-        // --- 3. HELPER FUNCTIONS ---
+        }
 
         function saveHistory() {
-            // Limit history to last 20 items to save storage
             if(sessionVideos.length > 20) sessionVideos = sessionVideos.slice(0, 20);
             localStorage.setItem('skateHistory', JSON.stringify(sessionVideos));
         }
@@ -344,7 +669,10 @@
         function renderList() {
             videoList.innerHTML = "";
             if(sessionVideos.length === 0) {
-                videoList.innerHTML = "<div style='padding:20px; color:#666; text-align:center;'>No recent videos</div>";
+                const emptyMsg = document.createElement('div');
+                emptyMsg.style.cssText = 'padding:20px; color:#666; text-align:center;';
+                emptyMsg.textContent = 'No recent videos';
+                videoList.appendChild(emptyMsg);
                 return;
             }
 
@@ -353,35 +681,46 @@
                 div.className = "video-card";
                 div.setAttribute('data-id', vid.id);
                 div.onclick = () => playVideo(vid);
-                
-                div.innerHTML = `
-                    <div class="card-thumb">
-                        <video src="${vid.url}#t=1.0" preload="metadata" muted></video>
-                    </div>
-                    <div class="card-info">
-                        <div class="card-title">${vid.title}</div>
-                        <div class="card-meta">Processed: ${vid.date}</div>
-                    </div>
-                `;
+
+                const thumb = document.createElement('div');
+                thumb.className = "card-thumb";
+
+                const video = document.createElement('video');
+                video.src = vid.url + '#t=1.0';
+                video.preload = "metadata";
+                video.muted = true;
+                thumb.appendChild(video);
+
+                const info = document.createElement('div');
+                info.className = "card-info";
+
+                const title = document.createElement('div');
+                title.className = "card-title";
+                title.textContent = vid.title;
+
+                const meta = document.createElement('div');
+                meta.className = "card-meta";
+                meta.textContent = "Processed: " + vid.date;
+
+                info.appendChild(title);
+                info.appendChild(meta);
+                div.appendChild(thumb);
+                div.appendChild(info);
                 videoList.appendChild(div);
             });
         }
 
         function playVideo(vid) {
-            // Setup Player
             mainPlayer.src = vid.url;
-            mainPlayer.play().catch(e => console.log("Auto-play prevented")); // Handle browser blocking
+            mainPlayer.play().catch(e => console.log("Auto-play prevented"));
             
-            // Setup Info
             mainTitle.innerText = vid.title;
             mainDate.innerText = "Analyzed at " + vid.date;
             
-            // Setup Download
             downloadBtn.style.display = "inline-flex";
             downloadBtn.href = vid.url;
             downloadBtn.download = "analyzed_" + vid.title;
 
-            // Highlight active card
             document.querySelectorAll('.video-card').forEach(c => c.classList.remove('active'));
             const activeCard = document.querySelector(`.video-card[data-id="${vid.id}"]`);
             if(activeCard) activeCard.classList.add('active');

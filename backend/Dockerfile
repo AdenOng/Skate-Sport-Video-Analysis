@@ -1,9 +1,10 @@
-# Use CUDA 12.2 (Compatible with your RTX 3090 and Driver 570)
+# Use CUDA 11.8 with cuDNN 8 (Compatible with RTX 3090 and Driver 570+)
 FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# FIX: Added 'ffmpeg' here
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -13,21 +14,26 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 WORKDIR /app
 
-# 2. Copy Requirements
 COPY requirements.txt .
 
-# 3. Install Python Packages
-# Using 'pip3' alias
 RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir -r requirements.txt
 
-# 4. Copy Code & Create Dirs
 COPY . .
-RUN mkdir -p models temp_videos
 
-# 5. Run
+RUN mkdir -p models temp_videos && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

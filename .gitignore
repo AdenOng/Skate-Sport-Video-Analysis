@@ -1,3 +1,4 @@
+# Project-specific ignores
 test.py
 tester.py
 Docker_RtmPose
@@ -6,3 +7,52 @@ VitPose
 annotated.mp4
 Proximation.ipynb
 VID_20250511172200.mp4
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temp files
+backend/temp_videos/
+*.log
+*.tmp
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
